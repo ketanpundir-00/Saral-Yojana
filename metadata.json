@@ -1,0 +1,7 @@
+{
+  "name": "Saral Yojana",
+  "description": "An AI-powered assistant to help Indian citizens understand and check eligibility for government schemes in English, Hindi, and Hinglish.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
