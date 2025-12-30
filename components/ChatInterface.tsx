@@ -18,6 +18,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialMessage }) => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const initialMessageSentRef = useRef(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -26,43 +27,59 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialMessage }) => {
   useEffect(() => {
     scrollToBottom();
   }, [messages, isLoading]);
+  
+  const sendMessage = (messageText: string) => {
+    if (!messageText.trim()) return;
+    if (isLoading) return;
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
-
-    const userMessage: Message = {
-      role: 'user',
-      text: input,
-      timestamp: new Date()
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    setInput('');
+    const userMessage: Message = { role: 'user', text: messageText, timestamp: new Date() };
+    
     setIsLoading(true);
+    setMessages(prevMessages => {
+      const historyForApi = prevMessages;
+      const updatedHistoryForUi = [...prevMessages, userMessage];
 
-    try {
-      const response = await geminiService.sendMessage(messages, input);
-      const modelMessage: Message = {
-        role: 'model',
-        text: response.text,
-        timestamp: new Date(),
-        groundingMetadata: response.groundingMetadata
-      };
-      setMessages(prev => [...prev, modelMessage]);
-    } catch (error) {
-      setMessages(prev => [...prev, {
-        role: 'model',
-        text: "I'm sorry, I'm having trouble connecting right now. Please try again later.",
-        timestamp: new Date()
-      }]);
-    } finally {
-      setIsLoading(false);
+      geminiService.sendMessage(historyForApi, messageText)
+        .then(response => {
+          const modelMessage: Message = {
+            role: 'model',
+            text: response.text,
+            timestamp: new Date(),
+            groundingMetadata: response.groundingMetadata,
+          };
+          setMessages(prev => [...prev, modelMessage]);
+        })
+        .catch(error => {
+          console.error("Error sending message:", error);
+          setMessages(prev => [...prev, {
+            role: 'model',
+            text: "I'm sorry, I'm having trouble connecting right now. Please try again later.",
+            timestamp: new Date(),
+          }]);
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
+      
+      return updatedHistoryForUi;
+    });
+  };
+
+  useEffect(() => {
+    if (initialMessage && !initialMessageSentRef.current) {
+      initialMessageSentRef.current = true;
+      sendMessage(initialMessage);
     }
+  }, [initialMessage]);
+
+  const handleSend = () => {
+    sendMessage(input);
+    setInput('');
   };
 
   return (
     <div className="flex flex-col h-full bg-slate-50">
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
         {messages.map((msg, idx) => (
           <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
@@ -70,11 +87,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialMessage }) => {
                 ? 'bg-orange-600 text-white rounded-br-none' 
                 : 'bg-white text-gray-800 border border-gray-100 rounded-bl-none'
             }`}>
-              <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                {msg.text}
+              <div className="whitespace-pre-wrap text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: msg.text.replace(/\n/g, '<br />') }}>
               </div>
               {msg.groundingMetadata?.groundingChunks && (
-                <div className="mt-3 pt-3 border-t border-gray-100">
+                <div className="mt-3 pt-3 border-t border-gray-200">
                   <p className="text-[10px] font-bold uppercase text-gray-400 mb-1">Sources</p>
                   <ul className="space-y-1">
                     {msg.groundingMetadata.groundingChunks.map((chunk: any, i: number) => (
@@ -97,7 +113,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialMessage }) => {
                   </ul>
                 </div>
               )}
-              <div className={`text-[10px] mt-1 ${msg.role === 'user' ? 'text-orange-100' : 'text-gray-400'}`}>
+              <div className={`text-[10px] text-right mt-1 ${msg.role === 'user' ? 'text-orange-100' : 'text-gray-400'}`}>
                 {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </div>
             </div>
@@ -131,7 +147,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialMessage }) => {
             onClick={handleSend}
             disabled={isLoading}
             className={`p-3 rounded-full transition-colors ${
-              isLoading ? 'bg-gray-300' : 'bg-orange-600 hover:bg-orange-700'
+              isLoading ? 'bg-gray-300 cursor-not-allowed' : 'bg-orange-600 hover:bg-orange-700'
             } text-white`}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
